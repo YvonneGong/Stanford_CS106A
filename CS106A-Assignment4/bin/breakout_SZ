@@ -1,0 +1,310 @@
+/*This is second part of Assignment 2. The goal is to create a bouncing ball game.
+ *
+ */
+import acm.graphics.*;     // GOval, GRect, etc.
+import acm.program.*;      // GraphicsProgram
+import acm.util.*;         // RandomGenerator
+import java.awt.*;         // Color
+import java.awt.event.*;   // MouseEvent
+import java.util.HashSet;
+
+public class Breakout extends BreakoutProgram {
+
+	public void run() {
+		// Set the window's title bar text
+		setTitle("CS 106A Breakout");
+
+		// Set the canvas size.  In your code, remember to ALWAYS use getWidth()
+		// and getHeight() to get the screen dimensions, not these constants!
+		setCanvasSize(CANVAS_WIDTH, CANVAS_HEIGHT);
+		//create bricks
+		createBrick();
+
+		while (turns > 0) {
+
+			//create paddle
+			createPaddle();
+
+			//make the ball and let it bounce
+			// BallAndBoucing(); ----> create ball and let the game start are two different pieces of logics.
+			//Also, of your functions start with lowercase, why this one starts with uppercase???
+			createBall();
+
+			//score = 0; // ----> every time when a new game starts, score initialized to be 0.
+			setNewLabel();
+
+			boolean wonTheTurn = startPlaying();
+
+			if (wonTheTurn) {
+				youWin();
+				return ; // ----> end the program
+			} else {
+				// when the program runs to this line, it means we lost this turn.
+				removeAllExceptBricks(); // ----> continue looping if turns > 0
+			}
+		}
+
+		//if turns == 0, remove ball and paddle, show GAME OVER
+		gameOver();
+	}
+
+	private void removeAllExceptBricks() {
+		remove(Paddle);
+		remove(Ball);
+		remove(myLabel); // ----> you want to capitalize the first letter as well
+
+	}
+
+	private GRect One_brick;
+	private GRect Paddle; //Private instance variable - accessible in run *and* in mouseMoved
+	private GOval Ball;
+	private double randomX; // vx
+	private double vy; // vy
+	private GLabel myLabel;
+
+	// private Integer turns = NTURNS;  ----> It is hard to tell the diffference between int and Integer but here all you need is int. Most of the time in your project, int is sufficient.
+	// private Integer score = 0; ----> "turns" is "program-level" variable, when turns == 0, the program exits. But "score" is "game-level" varaible, each run of the program can have multiple games.
+	private int score = 0; // ----> this is why you initialize the value for "turns" but leave "score" as "blank" varaible. "score" will be initialized as 0 when a new game begins.
+	private int turns = NTURNS;
+	private HashSet<GRect> bricks;
+	private boolean winFlag = false;
+
+
+	/*Stage1: add bricks at the top of the canvas.
+	 * step1: create one brick; step2: create x*y brick; step3: set the edge and gap;
+	 * step4: add colors to the bricks
+	 */
+
+	//create compound
+	//GCompound Bricks = new GCompound();
+	private void createBrick(){
+		//create the first brick and put it at the right position ----> initialize BRICK_OFFSET
+		double BRICK_X_OFFSET = (getWidth() - (NBRICK_COLUMNS*BRICK_WIDTH + (NBRICK_COLUMNS-1)*
+			BRICK_SEP))/2;
+		//create all the bricks
+		bricks = new HashSet<>();
+		for (int i = 0; i < NBRICK_COLUMNS; i++){
+			for (int j = 0; j< 2; j++){
+				One_brick = new GRect(BRICK_X_OFFSET + i*(BRICK_WIDTH + BRICK_SEP),
+															BRICK_Y_OFFSET + j*(BRICK_HEIGHT + BRICK_SEP),
+															BRICK_WIDTH, BRICK_HEIGHT);
+				if ((j%10 == 0) || (j%10 == 1)){
+					One_brick.setColor(Color.RED);
+				}else if ((j%10 == 2) || (j%10 == 3)){
+					One_brick.setColor((Color.ORANGE));
+				}else if ((j%10 == 4) || (j%10 == 5)){
+					One_brick.setColor((Color.YELLOW));
+				}else if ((j%10 == 6) || (j%10 == 7)){
+					One_brick.setColor((Color.GREEN));
+				}else if ((j%10 == 8) || (j%10 == 9)){
+					One_brick.setColor((Color.CYAN));
+				}
+				One_brick.setFilled(true);
+				bricks.add(One_brick);
+				add(One_brick);
+			}
+		}
+	}
+
+
+	/*Stage 2: Paddle
+	 * The paddle follow the movement of the mouse on the x-axis
+	 *
+	 */
+
+	//add the paddle
+	private void createPaddle(){
+		double PADDLE_X_OFFSET = (getWidth() - PADDLE_WIDTH) / 2;
+		Paddle = new GRect(PADDLE_X_OFFSET,
+											 getHeight() - PADDLE_Y_OFFSET - PADDLE_HEIGHT,
+											 PADDLE_WIDTH, PADDLE_HEIGHT);
+		Paddle.setFilled(true);
+		add(Paddle);
+	}
+
+	//below is in stage 2, make the paddle move with mouse
+	public void mouseMoved(MouseEvent event){
+		// get the x location of the mouse
+		double mouseX = event.getX();
+		//do something when the event (mouseMoved) happens - move with its X ----> compute where the paddle is supposed to be given mouse location
+		double rectX = mouseX - Paddle.getWidth()/2;
+		if (rectX < 0){
+			rectX = 0;
+		}else if (rectX > getWidth() - Paddle.getWidth()){
+			rectX = getWidth() - Paddle.getWidth();
+		}
+		Paddle.setLocation(rectX, getHeight() - PADDLE_Y_OFFSET - PADDLE_HEIGHT);
+	}
+
+
+
+
+	/* Stage 3: Ball and Bouncing
+	 * First, create a ball and put it at the center of the canvas;
+	 * Second, make the ball start bouncing with random x direction
+	 * Third, make the ball change direction after hitting the wall
+	 * Don't consider paddle and bricks at this stage; take the bottom
+	 * wall as the other walls for now
+	 */
+
+	// step 3.1: create a ball and put it at the center
+
+	private void createBall(){
+		double BALL_X = getWidth() / 2 - BALL_RADIUS;
+		double BALL_Y = getHeight() / 2 - BALL_RADIUS;
+
+		Ball = new GOval(BALL_X, BALL_Y, BALL_RADIUS*2, BALL_RADIUS*2);
+		Ball.setFilled(true);
+		add(Ball);
+	}
+
+	private boolean startPlaying() {
+		// step 3.2: let the ball start with a random x
+		// step 3.2.1: make a random generator x
+		int DirectionX = RandomGenerator.getInstance().nextBoolean(0.5) ? -1 : 1;
+		// ----> if you rename "randomX" to be "vx", it makes better sense since you used vy below
+		randomX = RandomGenerator.getInstance().nextDouble(VELOCITY_X_MIN, VELOCITY_X_MAX)*DirectionX;
+
+		//System.out.print(randomX);
+		//System.out.print(VELOCITY_Y);
+		// step 3.2.2: let the ball move
+
+		vy = VELOCITY_Y;
+
+		while (winFlag == false) {
+
+			Ball.move(randomX, vy);
+			pause(DELAY); // ----> can you show me what the game looks like if this line is removed?
+
+			//step 3.3 change x direction if hit left or right wall
+			if (Ball.getX() <= 0){
+				randomX = -randomX;
+			}else if(Ball.getX() + BALL_RADIUS*2 >= getWidth()){
+				randomX = -randomX;
+			}else if(Ball.getY()<=0){
+				vy = -vy;
+			}else if(Ball.getY() + BALL_RADIUS*2 >= getHeight()){
+				loseTurn();
+				return false; // ----> return wonTheTurn false
+			}
+			collisionActionOn(getCollidingObject());
+		}
+		return true; // the loop ends on winFlag being true. we return wonTheTurn true.
+	}
+
+
+
+	/*Stage 4: Collisions
+	 * This is to check whether the ball hits anything and take correct actions.
+	 * Step 1: check the four corner points of the ball by getElementAt(double x,
+	 * double y).
+	 * Step 2: return null if hits nothing or the GObject
+	 * Step 3: if hits paddle, change y direction of ball; if hits brick, remove the
+	 * brick by the remove method
+	 */
+
+
+	//Step 3.1: write the function to store the hit object
+	private GObject getCollidingObject(){
+		double corner_1_x = Ball.getX();
+		double corner_1_y = Ball.getY();
+		double corner_2_x = corner_1_x + 2*BALL_RADIUS;
+		double corner_2_y = corner_1_y;
+		double corner_3_x = corner_1_x;
+		double corner_3_y = corner_1_y + 2*BALL_RADIUS;
+		double corner_4_x = corner_2_x;
+		double corner_4_y = corner_3_y;
+
+		if (getElementAt(corner_1_x, corner_1_y)!=null){
+			return getElementAt(corner_1_x, corner_1_y);
+		}else if (getElementAt(corner_2_x, corner_2_y)!=null){
+			return getElementAt(corner_2_x, corner_2_y);
+		}else if (getElementAt(corner_3_x, corner_3_y)!=null){
+			return getElementAt(corner_3_x, corner_3_y);
+		}else if (getElementAt(corner_4_x, corner_4_y)!=null){
+			return getElementAt(corner_4_x, corner_4_y);
+		}else {
+			return null;
+		}
+
+	}
+
+	//Step 3.2: take correct actions when collision happens
+	// private GObject collider; ----> It makes better sense to have the "action" happen on a "collider" that is returned by getCollidingObject()
+	private void collisionActionOn(GObject collider){
+		if (collider == Paddle){
+			vy = -vy;
+		}else if(bricks.contains(collider)){
+			remove(collider);
+			bricks.remove(collider);
+			//check whether all bricks has been removed; if so, break and show youWin
+			if (bricks.isEmpty()){
+				winFlag = true;
+			} else {
+				vy = -vy;
+				score += 1;
+				changeLabel(); // ----> changeLabel1
+			}
+		} else {;}
+	}
+
+	/* Stage 5: And Turns, Score and End of the Game
+	 * Step 1: add the game info label of scores and turn
+	 * Step 2: if the ball hits a brick, score ++1;
+	 * Step 3: if the ball hit the bottom wall, turn --1
+	 * Step 4: if turn ==0 before score ==100; show "GAME OVER" and
+	 * remove ball and paddle
+	 * Step 5: if score ==100 before turn ==0; show "YOU WIN" and
+	 * remove ball and paddle
+	 */
+
+	private void setNewLabel() {
+		myLabel = new GLabel ("Score: "+ score +", Turns: " + turns ); // ----> can we modify the strings in the label directly?
+		myLabel.setFont(SCREEN_FONT);
+		myLabel.setLocation(0, myLabel.getAscent());
+		add(myLabel);
+	}
+
+	// ----> when "changeLabel" is needed? When hit a brick or lost a turn. Search for "changeLabel1" and "changeLabel2" to see where I invoke this function.
+	// Step 5.1 and 5.2: add label and it will update with score and turn
+	private void changeLabel() {
+		remove(myLabel);
+		setNewLabel();
+	}
+
+	//Step 5.3: if the ball hits the bottom wall, update he turn and re-start
+	//the game
+
+	private void loseTurn(){
+		remove (Ball);
+		turns -= 1;
+		changeLabel(); // ----> changeLabel2
+	}
+
+
+	//Step 5.4: if all bricks have been removed, remove ball and paddle show You Win at
+	//the center
+
+	private void youWin() {
+		remove (Ball);
+		remove (Paddle);
+		GLabel WIN_LABEL = new GLabel ("YOU WIN!");
+		WIN_LABEL.setFont(SCREEN_FONT);
+		WIN_LABEL.setLocation((getWidth()-WIN_LABEL.getWidth()) / 2, (getHeight() - WIN_LABEL.getHeight()) / 2);
+		add(WIN_LABEL);
+	}
+
+	//Step 5.5: remove ball and paddle, show Game Over
+
+	private void gameOver(){
+		remove (Ball);
+		remove (Paddle);
+		GLabel GAMEOVER = new GLabel ("GAME OVER!");
+		GAMEOVER.setFont(SCREEN_FONT);
+		GAMEOVER.setLocation((getWidth() - GAMEOVER.getWidth()) / 2,
+				(getHeight() - GAMEOVER.getHeight()) / 2);
+		add(GAMEOVER);
+		add(myLabel);
+	}
+}
+

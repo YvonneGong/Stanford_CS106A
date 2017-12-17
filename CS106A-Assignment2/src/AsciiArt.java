@@ -15,7 +15,7 @@ public class AsciiArt extends ConsoleProgram {
 				print(" ");
 			}
 			print("*");
-			for 
+			
 		}
 		
 	}
